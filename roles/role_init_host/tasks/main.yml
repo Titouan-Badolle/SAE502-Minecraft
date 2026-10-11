@@ -1,0 +1,40 @@
+- name: S'assurer que UFW est installé
+  apt:
+    name: ufw
+    state: present
+    update_cache: yes
+
+- name: Autoriser SSH (Port 22)
+  ufw:
+    rule: allow
+    port: '22'
+    proto: tcp
+
+- name: Autoriser Minecraft (Port 25565)
+  ufw:
+    rule: allow
+    port: '25565'
+    proto: tcp
+
+- name: Autoriser HTTP/HTTPS (Ports 80, 443)
+  ufw:
+    rule: allow
+    port: '{{ item }}'
+    proto: tcp
+  loop:
+    - '80'
+    - '443'
+
+- name: Activer UFW avec politique stricte par défaut
+  ufw:
+    state: enabled
+    policy: deny
+
+- name: Créer les répertoires racines du projet et des sauvegardes
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/infra_mc
+    - /var/backups/infra_mc

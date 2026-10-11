@@ -1,3 +1,6 @@
-.vault_pass.txt
 *.retry
-group_vars/all/vault.yml
+.vault_pass.txt
+__pycache__/
+.venv/
+*.key
+id_ed25519*

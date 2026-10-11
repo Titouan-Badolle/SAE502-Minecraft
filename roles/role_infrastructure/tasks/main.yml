@@ -50,6 +50,46 @@
   retries: 30
   delay: 3
 
+# Utilisateur SQL en lecture seule pour mysqld_exporter.
+# IF NOT EXISTS + ALTER rendent la commande rejouable sans erreur.
+- name: Créer l'utilisateur SQL de supervision
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - CT-db
+      - mariadb
+      - -uroot
+      - "-p{{ vault_db_root_password }}"
+      - -e
+      - >-
+        CREATE USER IF NOT EXISTS 'exporter'@'127.0.0.1' IDENTIFIED BY '{{ vault_exporter_password }}';
+        ALTER USER 'exporter'@'127.0.0.1' IDENTIFIED BY '{{ vault_exporter_password }}';
+        GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'127.0.0.1';
+  changed_when: false
+  no_log: true
+
+# Les exporters partagent la pile réseau de CT-db : ils ont son IP (.13)
+# et joignent MariaDB en localhost, sans exposer le port 3306.
+- name: Déployer mysqld_exporter dans CT-db
+  community.docker.docker_container:
+    name: CT-db-mysqld-exporter
+    image: "{{ mysqld_exporter_image }}"
+    restart_policy: unless-stopped
+    network_mode: container:CT-db
+    command:
+      - --mysqld.address=127.0.0.1:3306
+      - --mysqld.username=exporter
+    env:
+      MYSQLD_EXPORTER_PASSWORD: "{{ vault_exporter_password }}"
+
+- name: Déployer node_exporter dans CT-db
+  community.docker.docker_container:
+    name: CT-db-node-exporter
+    image: "{{ node_exporter_image }}"
+    restart_policy: unless-stopped
+    network_mode: container:CT-db
+
 # --- CT-monitoring : Grafana + Prometheus ----------------------------------
 # Les images tournent avec un utilisateur non root : les volumes doivent
 # appartenir au bon UID (472 = grafana, 65534 = nobody pour Prometheus).

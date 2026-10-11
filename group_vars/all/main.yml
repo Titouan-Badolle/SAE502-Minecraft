@@ -26,6 +26,14 @@ proxy_image: nginx:1.28-alpine
 db_image: mariadb:11.4
 grafana_image: grafana/grafana:12.0.0
 prometheus_image: prom/prometheus:v3.5.0
+node_exporter_image: prom/node-exporter:v1.9.1
+mysqld_exporter_image: prom/mysqld-exporter:v0.17.2
+# Image de référence pour Minecraft : télécharge Paper et les plugins demandés
+serveur_image: itzg/minecraft-server:java21
+
+# CT-serveur (PaperMC)
+mc_version: "1.21.8"
+mc_memory: 1536M
 
 # CT-db
 db_name: luckperms

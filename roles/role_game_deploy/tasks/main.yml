@@ -1,0 +1,57 @@
+---
+# --- CT-serveur : PaperMC + LuckPerms ---------------------------------------
+# L'image itzg/minecraft-server télécharge Paper (TYPE=PAPER) et LuckPerms
+# (depuis Modrinth). LuckPerms lit sa configuration dans les variables
+# LUCKPERMS_* : il stocke ses données dans CT-db au lieu d'un fichier local.
+- name: Déployer CT-serveur (PaperMC + LuckPerms)
+  community.docker.docker_container:
+    name: CT-serveur
+    image: "{{ serveur_image }}"
+    restart_policy: unless-stopped
+    networks:
+      - name: "{{ infra_network }}"
+        ipv4_address: "{{ serveur_ip }}"
+    env:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: "{{ mc_version }}"
+      MEMORY: "{{ mc_memory }}"
+      MODRINTH_PROJECTS: luckperms
+      ENABLE_RCON: "true"
+      RCON_PASSWORD: "{{ vault_rcon_password }}"
+      LUCKPERMS_STORAGE_METHOD: mariadb
+      LUCKPERMS_DATA_ADDRESS: "{{ db_ip }}:3306"
+      LUCKPERMS_DATA_DATABASE: "{{ db_name }}"
+      LUCKPERMS_DATA_USERNAME: "{{ db_user }}"
+      LUCKPERMS_DATA_PASSWORD: "{{ vault_db_password }}"
+    volumes:
+      - "{{ infra_dir }}/serveur:/data"
+
+- name: Déployer node_exporter dans CT-serveur
+  community.docker.docker_container:
+    name: CT-serveur-node-exporter
+    image: "{{ node_exporter_image }}"
+    restart_policy: unless-stopped
+    network_mode: container:CT-serveur
+
+# Premier démarrage : téléchargement de Paper, des plugins et génération du
+# monde. Sur 1 vCPU cela peut prendre plusieurs minutes.
+- name: Attendre que le serveur Minecraft soit prêt (healthcheck)
+  community.docker.docker_container_info:
+    name: CT-serveur
+  register: ct_serveur
+  until: ct_serveur.container.State.Health.Status == 'healthy'
+  retries: 80
+  delay: 5
+
+# --- CT-proxy : ouverture du flux Minecraft ---------------------------------
+- name: Relayer le TCP 25565 de CT-proxy vers CT-serveur (Nginx stream)
+  ansible.builtin.copy:
+    dest: "{{ infra_dir }}/proxy/stream.d/minecraft.conf"
+    content: |
+      server {
+          listen 25565;
+          proxy_pass {{ serveur_ip }}:25565;
+      }
+    mode: '0644'
+  notify: Recharger Nginx

@@ -8,6 +8,7 @@ backup_dir: /var/backups/infra_mc
 # Clés publiques autorisées à se connecter en SSH (la clé publique n'est pas un secret)
 ssh_authorized_keys:
   - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE2obvYBXGI+ofc7JmutcdAMoDyB4/u8c8UKV3xPmjl8 ansible@wsl-titouan"
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKZbt4MJgHDkVpg7oJW7CwhLnvv4L8c4sn3rjAP8omoO termius-titouan"
 
 # Réseau Docker dédié, hors du réseau de l'IUT (192.168.112.0/20)
 infra_network: infra_mc

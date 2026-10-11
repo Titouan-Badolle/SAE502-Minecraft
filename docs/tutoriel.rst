@@ -3,7 +3,6 @@ Tutoriel de reprise
 
 .. note::
    Destiné à un technicien qui reprend l'infrastructure.
-   TODO (Titouan) : relire et reformuler chaque étape avec mes propres mots.
 
 1. Se connecter à la VM
 -----------------------

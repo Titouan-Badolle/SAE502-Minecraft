@@ -29,6 +29,9 @@ Les conteneurs communiquent sur un réseau bridge Docker dédié `infra_mc` (172
 - Ubuntu 26.04 utilise `sudo-rs` par défaut : Ansible ne reconnaît pas son invite de mot de passe, d'où `ansible_become_exe: sudo.ws` dans l'inventaire.
 - Docker contourne UFW pour les ports publiés : seul CT-proxy publie des ports, les autres conteneurs restent sur `infra_mc`.
 
+## Guide de lancement
+Toutes les étapes pas à pas (déploiement, SSH, tunnel Minecraft, Grafana, sauvegardes, démonstration) : [LANCEMENT.md](LANCEMENT.md).
+
 ## Documentation
 Documentation technique et tutoriel de reprise (Sphinx) dans `docs/` :
 ```bash

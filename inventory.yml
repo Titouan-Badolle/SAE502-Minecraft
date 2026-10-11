@@ -3,4 +3,4 @@ all:
     docker_host:
       hosts:
         192.168.119.6:
-          ansible_user: root # À modifier par ton vrai nom d'utilisateur sur la VM
+          ansible_user: rt

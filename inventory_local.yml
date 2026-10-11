@@ -1,0 +1,7 @@
+# Inventaire de test : exécute le playbook sur la machine locale (Ubuntu WSL)
+all:
+  children:
+    docker_host:
+      hosts:
+        localhost:
+          ansible_connection: local

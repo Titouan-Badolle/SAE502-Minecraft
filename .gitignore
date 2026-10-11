@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 *.key
 id_ed25519*
+docs/_build/
+notes/

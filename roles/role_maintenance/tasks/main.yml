@@ -1,0 +1,36 @@
+---
+- name: Installer les scripts de sauvegarde et de restauration
+  ansible.builtin.template:
+    src: "{{ item }}.sh.j2"
+    dest: "/usr/local/sbin/{{ item }}.sh"
+    mode: '0750'
+  loop:
+    - infra_mc-backup
+    - infra_mc-restore
+
+# Les sauvegardes contiennent la base : lisibles par root uniquement
+- name: Restreindre l'accès au dossier des sauvegardes
+  ansible.builtin.file:
+    path: "{{ backup_dir }}"
+    state: directory
+    mode: '0700'
+
+- name: Planifier la sauvegarde quotidienne (cron)
+  ansible.builtin.cron:
+    name: infra_mc backup
+    hour: "{{ backup_hour }}"
+    minute: "0"
+    job: "/usr/local/sbin/infra_mc-backup.sh >> /var/log/infra_mc-backup.log 2>&1"
+
+# Garantit qu'une sauvegarde existe dès le déploiement, et valide le script
+# (dump, RCON, archive, test d'intégrité) en conditions réelles.
+- name: Vérifier si une sauvegarde existe déjà
+  ansible.builtin.find:
+    paths: "{{ backup_dir }}"
+    patterns: "db_*.sql.gz"
+  register: existing_backups
+
+- name: Lancer une première sauvegarde
+  ansible.builtin.command: /usr/local/sbin/infra_mc-backup.sh
+  when: existing_backups.matched == 0
+  changed_when: true

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Restauration d'une sauvegarde (base + monde).
+# Usage : infra_mc-restore.sh            -> restaure la plus récente
+#         infra_mc-restore.sh <horodatage>  (ex. 2026-10-11_030000)
+set -euo pipefail
+
+BACKUP_DIR="{{ backup_dir }}"
+WORLD_DIR="{{ infra_dir }}/serveur"
+
+TS=${1:-$(ls -1 "$BACKUP_DIR"/db_*.sql.gz | sort | tail -1 | sed 's/.*db_\(.*\)\.sql\.gz/\1/')}
+DB="$BACKUP_DIR/db_$TS.sql.gz"
+WORLD="$BACKUP_DIR/world_$TS.tar.gz"
+log() { echo "$(date '+%F %T') $*"; logger -t infra_mc-restore "$*"; }
+
+# 1. Test d'intégrité AVANT de toucher à quoi que ce soit
+[ -f "$DB" ] && [ -f "$WORLD" ] || { echo "Sauvegarde $TS introuvable" >&2; exit 1; }
+gzip -t "$DB"
+tar -tzf "$WORLD" > /dev/null
+log "Restauration de $TS (archives intègres)"
+
+# 2. Arrêt du serveur : aucun joueur ne doit écrire pendant la restauration
+docker stop CT-serveur > /dev/null
+
+# 3. Base : le dump contient DROP TABLE / CREATE TABLE, il remplace les données
+gunzip -c "$DB" | docker exec -i CT-db sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"'
+
+# 4. Monde : l'ancien est conservé à côté (.avant_restauration_<date>)
+KEEP=".avant_restauration_$(date +%F_%H%M%S)"
+for w in world world_nether world_the_end; do
+  [ -d "$WORLD_DIR/$w" ] && mv "$WORLD_DIR/$w" "$WORLD_DIR/$w$KEEP"
+done
+tar -xzf "$WORLD" -C "$WORLD_DIR"
+
+# 5. Redémarrage. node_exporter partage la pile réseau de CT-serveur :
+#    il doit redémarrer après lui pour s'y rattacher.
+docker start CT-serveur > /dev/null
+docker restart CT-serveur-node-exporter > /dev/null
+log "Restauration de $TS terminée (ancien monde conservé : *$KEEP)"

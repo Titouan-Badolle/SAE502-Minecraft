@@ -4,6 +4,8 @@
 
 infra_dir: /opt/infra_mc
 backup_dir: /var/backups/infra_mc
+backup_hour: "3"            # sauvegarde quotidienne à 3 h (peu de joueurs)
+backup_retention_days: 7
 
 # Clés publiques autorisées à se connecter en SSH (la clé publique n'est pas un secret)
 ssh_authorized_keys:

@@ -1,23 +1,28 @@
-- name: S'assurer que UFW est installé
-  apt:
-    name: ufw
+---
+- name: Installer UFW et la bibliothèque Python cryptography (certificat)
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - python3-cryptography
     state: present
-    update_cache: yes
+    update_cache: true
+    cache_valid_time: 3600
 
+# --- Pare-feu -------------------------------------------------------------
 - name: Autoriser SSH (Port 22)
-  ufw:
+  community.general.ufw:
     rule: allow
     port: '22'
     proto: tcp
 
 - name: Autoriser Minecraft (Port 25565)
-  ufw:
+  community.general.ufw:
     rule: allow
     port: '25565'
     proto: tcp
 
 - name: Autoriser HTTP/HTTPS (Ports 80, 443)
-  ufw:
+  community.general.ufw:
     rule: allow
     port: '{{ item }}'
     proto: tcp
@@ -26,15 +31,54 @@
     - '443'
 
 - name: Activer UFW avec politique stricte par défaut
-  ufw:
+  community.general.ufw:
     state: enabled
     policy: deny
 
-- name: Créer les répertoires racines du projet et des sauvegardes
-  file:
+# --- SSH par clés ---------------------------------------------------------
+- name: Autoriser les clés publiques de l'administrateur
+  ansible.posix.authorized_key:
+    user: "{{ ansible_user | default('rt') }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ ssh_authorized_keys }}"
+
+# Fichier "01-" : sshd garde la première valeur lue, il passe donc avant
+# les autres fichiers du dossier (ex. 50-cloud-init.conf).
+- name: Interdire root et l'authentification par mot de passe en SSH
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/01-infra_mc.conf
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+    mode: '0644'
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Redémarrer SSH
+
+# --- Répertoires ----------------------------------------------------------
+- name: Créer les répertoires du projet, des volumes et des sauvegardes
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     mode: '0755'
   loop:
-    - /opt/infra_mc
-    - /var/backups/infra_mc
+    - "{{ infra_dir }}"
+    - "{{ infra_dir }}/proxy/certs"
+    - "{{ infra_dir }}/db"
+    - "{{ infra_dir }}/serveur"
+    - "{{ infra_dir }}/monitoring"
+    - "{{ backup_dir }}"
+
+# --- Certificat auto-signé pour Nginx (HTTPS Grafana) ---------------------
+- name: Générer la clé privée du certificat
+  community.crypto.openssl_privatekey:
+    path: "{{ infra_dir }}/proxy/certs/infra_mc.key"
+    mode: '0600'
+
+- name: Générer le certificat auto-signé
+  community.crypto.x509_certificate:
+    path: "{{ infra_dir }}/proxy/certs/infra_mc.crt"
+    privatekey_path: "{{ infra_dir }}/proxy/certs/infra_mc.key"
+    provider: selfsigned
+    selfsigned_not_after: "+365d"

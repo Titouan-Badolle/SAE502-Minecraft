@@ -1,0 +1,6 @@
+---
+- name: Déploiement de l'infrastructure Minecraft
+  hosts: docker_host
+  become: true
+  roles:
+    - role_init_host

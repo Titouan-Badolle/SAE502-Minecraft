@@ -1,0 +1,37 @@
+# {{ ansible_managed }}
+user nginx;
+worker_processes auto;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    server_tokens off;
+
+    # HTTP : redirection systématique vers HTTPS
+    server {
+        listen 80;
+        return 301 https://$host$request_uri;
+    }
+
+    # HTTPS : reverse proxy vers Grafana (CT-monitoring)
+    server {
+        listen 443 ssl;
+        ssl_certificate     /etc/nginx/certs/infra_mc.crt;
+        ssl_certificate_key /etc/nginx/certs/infra_mc.key;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+
+        location / {
+            proxy_pass http://{{ monitoring_ip }}:3000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+        }
+    }
+}
+
+# TCP brut (Minecraft) : les fichiers sont ajoutés par role_game_deploy
+stream {
+    include /etc/nginx/stream.d/*.conf;
+}

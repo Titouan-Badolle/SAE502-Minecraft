@@ -10,8 +10,14 @@
   ansible.builtin.command: docker kill --signal HUP CT-monitoring-prometheus
   changed_when: true
 
+# Prometheus partage la pile réseau de Grafana : si Grafana redémarre, il
+# obtient une nouvelle pile et Prometheus doit redémarrer après lui pour s'y
+# rattacher. L'ordre de la boucle compte.
 - name: Redémarrer Grafana
   community.docker.docker_container:
-    name: CT-monitoring
+    name: "{{ item }}"
     state: started
     restart: true
+  loop:
+    - CT-monitoring
+    - CT-monitoring-prometheus

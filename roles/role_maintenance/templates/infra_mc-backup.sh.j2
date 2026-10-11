@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Sauvegarde quotidienne : dump SQL (CT-db) + archive du monde (CT-serveur).
+# Aucun mot de passe ici : ils sont lus dans l'environnement des conteneurs
+# (MARIADB_ROOT_PASSWORD, RCON_PASSWORD), eux-mêmes alimentés par Vault.
+set -euo pipefail
+
+BACKUP_DIR="{{ backup_dir }}"
+WORLD_DIR="{{ infra_dir }}/serveur"
+RETENTION_DAYS={{ backup_retention_days }}
+TS=$(date +%F_%H%M%S)
+
+log() { echo "$(date '+%F %T') $*"; logger -t infra_mc-backup "$*"; }
+rcon() { docker exec CT-serveur rcon-cli "$@"; }
+
+# 1. Base de données : --single-transaction = dump cohérent sans bloquer LuckPerms
+log "Dump SQL de {{ db_name }}"
+docker exec CT-db sh -c 'mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" --single-transaction --databases {{ db_name }}' \
+  | gzip > "$BACKUP_DIR/db_$TS.sql.gz"
+
+# 2. Monde : on suspend l'écriture sur disque pendant l'archive.
+#    trap : save-on est rétabli même si tar échoue.
+log "Archive du monde (save-off / save-all / save-on)"
+rcon save-off
+trap 'rcon save-on >/dev/null' EXIT
+rcon save-all flush
+WORLDS=$(cd "$WORLD_DIR" && ls -d world world_nether world_the_end 2>/dev/null)
+tar -czf "$BACKUP_DIR/world_$TS.tar.gz" -C "$WORLD_DIR" $WORLDS
+rcon save-on
+trap - EXIT
+
+# 3. Test d'intégrité des deux archives
+gzip -t "$BACKUP_DIR/db_$TS.sql.gz"
+tar -tzf "$BACKUP_DIR/world_$TS.tar.gz" > /dev/null
+log "Sauvegarde $TS OK ($(du -ch "$BACKUP_DIR"/*_"$TS".* | tail -1 | cut -f1))"
+
+# 4. Purge des sauvegardes de plus de $RETENTION_DAYS jours
+find "$BACKUP_DIR" -name '*.gz' -mtime +"$RETENTION_DAYS" -print -delete

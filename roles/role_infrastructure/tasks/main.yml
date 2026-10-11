@@ -89,6 +89,11 @@
     image: "{{ node_exporter_image }}"
     restart_policy: unless-stopped
     network_mode: container:CT-db
+    # Lecture seule du disque de la VM : sans cela node_exporter ne voit que
+    # le système de fichiers du conteneur (overlay), ignoré par défaut.
+    command: --path.rootfs=/host
+    volumes:
+      - /:/host:ro,rslave
 
 # --- CT-monitoring : Grafana + Prometheus ----------------------------------
 # Les images tournent avec un utilisateur non root : les volumes doivent
@@ -102,6 +107,7 @@
   loop:
     - { path: grafana-data, owner: '472' }
     - { path: grafana-provisioning/datasources, owner: root }
+    - { path: grafana-provisioning/dashboards, owner: root }
     - { path: prometheus-data, owner: '65534' }
     - { path: prometheus, owner: root }
 
@@ -116,6 +122,29 @@
   ansible.builtin.template:
     src: datasource.yml.j2
     dest: "{{ infra_dir }}/monitoring/grafana-provisioning/datasources/prometheus.yml"
+    mode: '0644'
+  notify: Redémarrer Grafana
+
+# Le fournisseur indique à Grafana où lire les tableaux de bord JSON.
+- name: Déclarer le fournisseur de tableaux de bord Grafana
+  ansible.builtin.copy:
+    dest: "{{ infra_dir }}/monitoring/grafana-provisioning/dashboards/provider.yml"
+    content: |
+      apiVersion: 1
+      providers:
+        - name: infra_mc
+          folder: Infrastructure
+          type: file
+          options:
+            path: /etc/grafana/provisioning/dashboards
+    mode: '0644'
+  notify: Redémarrer Grafana
+
+# copy et non template : le JSON contient des {{ }} propres à Grafana.
+- name: Provisionner le tableau de bord de l'infrastructure
+  ansible.builtin.copy:
+    src: infra_mc-dashboard.json
+    dest: "{{ infra_dir }}/monitoring/grafana-provisioning/dashboards/infra_mc.json"
     mode: '0644'
   notify: Redémarrer Grafana
 

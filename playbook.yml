@@ -5,3 +5,4 @@
   roles:
     - role_init_host
     - role_infrastructure
+    - role_game_deploy

@@ -24,6 +24,16 @@ wsl -d Ubuntu -u root -- ./deploy.sh -K
 - Premier déploiement sur une VM vierge : 5 à 10 min (téléchargement des images,
   génération du monde).
 
+## 1 bis. Vérifier que tout fonctionne (20 tests)
+
+```powershell
+wsl -d Ubuntu -u root -- bash -c "ssh rt@192.168.119.6 bash -s < tests/verification.sh"
+```
+
+Conteneurs, healthchecks, réseau, HTTPS, port 25565, RCON, tables LuckPerms,
+cibles Prometheus, sauvegardes. Attendu : `Tous les tests sont passés.`
+(Sur la VM, `sudo bash tests/verification.sh` vérifie aussi le cron.)
+
 ## 2. Se connecter à la VM en SSH
 
 Connexion **par clé uniquement** (mot de passe désactivé).
@@ -87,7 +97,7 @@ les conteneurs « sidecars » (Prometheus, exporters) dans le bon ordre.
 ## 7. Démonstration (ordre conseillé)
 
 1. `./deploy.sh -K` → `failed=0`, puis une 2e fois → `changed=0` (idempotence).
-2. Grafana : les 4 cibles **UP**, courbes CPU/RAM/disque.
+2. `tests/verification.sh` → tous les tests [OK] ; Grafana : les 4 cibles **UP**.
 3. Connexion au serveur Minecraft, construction d'un repère.
 4. `infra_mc-backup.sh` → destruction du repère → `infra_mc-restore.sh` → le repère revient.
 5. `sudo ufw status` et `ssh` avec mot de passe refusé → sécurité.

@@ -89,6 +89,11 @@
     image: "{{ node_exporter_image }}"
     restart_policy: unless-stopped
     network_mode: container:CT-db
+    # Lecture seule du disque de la VM : sans cela node_exporter ne voit que
+    # le système de fichiers du conteneur (overlay), ignoré par défaut.
+    command: --path.rootfs=/host
+    volumes:
+      - /:/host:ro,rslave
 
 # --- CT-monitoring : Grafana + Prometheus ----------------------------------
 # Les images tournent avec un utilisateur non root : les volumes doivent

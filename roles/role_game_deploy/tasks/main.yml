@@ -33,6 +33,11 @@
     image: "{{ node_exporter_image }}"
     restart_policy: unless-stopped
     network_mode: container:CT-serveur
+    # Lecture seule du disque de la VM : sans cela node_exporter ne voit que
+    # le système de fichiers du conteneur (overlay), ignoré par défaut.
+    command: --path.rootfs=/host
+    volumes:
+      - /:/host:ro,rslave
 
 # Premier démarrage : téléchargement de Paper, des plugins et génération du
 # monde. Sur 1 vCPU cela peut prendre plusieurs minutes.

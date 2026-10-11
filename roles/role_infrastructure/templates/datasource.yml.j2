@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+# Prometheus partage la pile réseau de Grafana : il est joignable en localhost.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://localhost:9090
+    isDefault: true

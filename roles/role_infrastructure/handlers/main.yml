@@ -1,0 +1,17 @@
+---
+# nginx -s reload : si la nouvelle configuration est invalide,
+# Nginx garde l'ancienne et continue de servir.
+- name: Recharger Nginx
+  ansible.builtin.command: docker exec CT-proxy nginx -s reload
+  changed_when: true
+
+# SIGHUP : Prometheus relit sa configuration sans redémarrer.
+- name: Recharger Prometheus
+  ansible.builtin.command: docker kill --signal HUP CT-monitoring-prometheus
+  changed_when: true
+
+- name: Redémarrer Grafana
+  community.docker.docker_container:
+    name: CT-monitoring
+    state: started
+    restart: true

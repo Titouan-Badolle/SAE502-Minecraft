@@ -1,0 +1,155 @@
+---
+# Docker (docker-ce) est déjà installé sur la VM du TP : on le vérifie
+# sans installer docker.io, qui entrerait en conflit avec docker-ce.
+- name: Vérifier que Docker est installé
+  ansible.builtin.command: docker --version
+  changed_when: false
+
+- name: Installer le SDK Python Docker (requis par community.docker)
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+
+- name: Créer le réseau Docker dédié infra_mc
+  community.docker.docker_network:
+    name: "{{ infra_network }}"
+    driver: bridge
+    ipam_config:
+      - subnet: "{{ infra_subnet }}"
+        gateway: "{{ infra_gateway }}"
+
+# --- CT-db : MariaDB --------------------------------------------------------
+# Les variables MARIADB_* sont lues par l'image officielle au premier démarrage :
+# elle crée alors la base et l'utilisateur du plugin LuckPerms.
+# Aucun port publié : la base n'est joignable que depuis infra_mc.
+- name: Déployer CT-db (MariaDB)
+  community.docker.docker_container:
+    name: CT-db
+    image: "{{ db_image }}"
+    restart_policy: unless-stopped
+    networks:
+      - name: "{{ infra_network }}"
+        ipv4_address: "{{ db_ip }}"
+    env:
+      MARIADB_ROOT_PASSWORD: "{{ vault_db_root_password }}"
+      MARIADB_DATABASE: "{{ db_name }}"
+      MARIADB_USER: "{{ db_user }}"
+      MARIADB_PASSWORD: "{{ vault_db_password }}"
+    volumes:
+      - "{{ infra_dir }}/db:/var/lib/mysql"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      retries: 10
+
+- name: Attendre que MariaDB soit prête (healthcheck)
+  community.docker.docker_container_info:
+    name: CT-db
+  register: ct_db
+  until: ct_db.container.State.Health.Status == 'healthy'
+  retries: 30
+  delay: 3
+
+# --- CT-monitoring : Grafana + Prometheus ----------------------------------
+# Les images tournent avec un utilisateur non root : les volumes doivent
+# appartenir au bon UID (472 = grafana, 65534 = nobody pour Prometheus).
+- name: Créer les répertoires de CT-monitoring
+  ansible.builtin.file:
+    path: "{{ infra_dir }}/monitoring/{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    mode: '0755'
+  loop:
+    - { path: grafana-data, owner: '472' }
+    - { path: grafana-provisioning/datasources, owner: root }
+    - { path: prometheus-data, owner: '65534' }
+    - { path: prometheus, owner: root }
+
+- name: Configurer Prometheus (cibles à interroger)
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ infra_dir }}/monitoring/prometheus/prometheus.yml"
+    mode: '0644'
+  notify: Recharger Prometheus
+
+- name: Provisionner la source de données Prometheus dans Grafana
+  ansible.builtin.template:
+    src: datasource.yml.j2
+    dest: "{{ infra_dir }}/monitoring/grafana-provisioning/datasources/prometheus.yml"
+    mode: '0644'
+  notify: Redémarrer Grafana
+
+- name: Déployer CT-monitoring (Grafana)
+  community.docker.docker_container:
+    name: CT-monitoring
+    image: "{{ grafana_image }}"
+    restart_policy: unless-stopped
+    networks:
+      - name: "{{ infra_network }}"
+        ipv4_address: "{{ monitoring_ip }}"
+    env:
+      GF_SECURITY_ADMIN_PASSWORD: "{{ vault_grafana_admin_password }}"
+      GF_SERVER_ROOT_URL: "https://{{ ansible_host | default(inventory_hostname) }}/"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - "{{ infra_dir }}/monitoring/grafana-data:/var/lib/grafana"
+      - "{{ infra_dir }}/monitoring/grafana-provisioning:/etc/grafana/provisioning:ro"
+
+# Prometheus partage la pile réseau de Grafana : même IP (.14), donc un seul
+# "CT-monitoring" vu du réseau, avec deux processus isolés (principe du pod).
+- name: Déployer Prometheus dans CT-monitoring
+  community.docker.docker_container:
+    name: CT-monitoring-prometheus
+    image: "{{ prometheus_image }}"
+    restart_policy: unless-stopped
+    network_mode: container:CT-monitoring
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - "{{ infra_dir }}/monitoring/prometheus:/etc/prometheus:ro"
+      - "{{ infra_dir }}/monitoring/prometheus-data:/prometheus"
+
+# --- CT-proxy : Nginx --------------------------------------------------------
+- name: Créer les répertoires de CT-proxy
+  ansible.builtin.file:
+    path: "{{ infra_dir }}/proxy/stream.d"
+    state: directory
+    mode: '0755'
+
+- name: Configurer Nginx (HTTPS vers Grafana, stream pour Minecraft)
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ infra_dir }}/proxy/nginx.conf"
+    mode: '0644'
+  notify: Recharger Nginx
+
+# Seul conteneur à publier des ports : Docker contourne UFW pour les ports
+# publiés, on limite donc l'exposition à ce point d'entrée unique.
+- name: Déployer CT-proxy (Nginx)
+  community.docker.docker_container:
+    name: CT-proxy
+    image: "{{ proxy_image }}"
+    restart_policy: unless-stopped
+    networks:
+      - name: "{{ infra_network }}"
+        ipv4_address: "{{ proxy_ip }}"
+    published_ports:
+      - "80:80"
+      - "443:443"
+      - "25565:25565"
+    volumes:
+      - "{{ infra_dir }}/proxy/nginx.conf:/etc/nginx/nginx.conf:ro"
+      - "{{ infra_dir }}/proxy/stream.d:/etc/nginx/stream.d:ro"
+      - "{{ infra_dir }}/proxy/certs:/etc/nginx/certs:ro"
+
+# Test de bout en bout : VM:443 -> Nginx -> Grafana
+- name: Vérifier que Grafana répond à travers le proxy HTTPS
+  ansible.builtin.uri:
+    url: https://localhost/api/health
+    validate_certs: false
+  register: grafana_health
+  until: grafana_health.status == 200
+  retries: 20
+  delay: 3

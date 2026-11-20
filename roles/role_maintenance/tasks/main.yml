@@ -9,7 +9,7 @@
     - infra_mc-restore
 
 # Les sauvegardes contiennent la base : lisibles par root uniquement
-- name: Restreindre l'accès au dossier des sauvegardes
+- name: Créer le dossier des sauvegardes (root uniquement)
   ansible.builtin.file:
     path: "{{ backup_dir }}"
     state: directory

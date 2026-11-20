@@ -68,7 +68,6 @@
     - "{{ infra_dir }}/db"
     - "{{ infra_dir }}/serveur"
     - "{{ infra_dir }}/monitoring"
-    - "{{ backup_dir }}"
 
 # --- Certificat auto-signé pour Nginx (HTTPS Grafana) ---------------------
 - name: Générer la clé privée du certificat
